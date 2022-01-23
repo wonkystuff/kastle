@@ -53,39 +53,38 @@ bool goingUp;
 uint16_t counter;
 
 bool resetState=false;
-uint16_t runglerOut;
-bool lastDoReset;
 const uint8_t runglerMap[8]={
   0,80,120,150,180,200,220,255};
   
 //uint16_t wsMap[10]={ 0,120,150,180,255,   20,60,120,190,254};
 
+uint8_t analogPins[3]={A1, A2, A3};
 
-uint8_t analogPins[3]={
-  A1,A2,A3};
-
-uint8_t _xor;
-int _val;
-bool _gate;
-int out,in;
-bool render;
-bool cycle;
-const bool usePin[4]={
-  true,false,true,false};
-uint8_t lfoValue=0;
-bool lfoFlop=true;
-bool doReset=false;
-bool firstRead=false;
-const uint8_t analogToDigitalPinMapping[4]={
-  7,PORTB2,PORTB4,PORTB3};
-  
-  
-uint16_t wsMap[10]={ 
-  0,60,127,191,255,   50,127,190,230,254};
+const uint8_t analogToDigitalPinMapping[4]={7,PORTB2,PORTB4,PORTB3};
 
 #define WSMAP_POINTS 5
+  
+uint16_t wsMap[10]={
+    0,60,127,191,255,
+    50,127,190,230,254
+};
 
-uint8_t mapLookup[256];
+bool     lfoFlop=true;
+uint8_t  mapLookup[256];
+int      _val;
+uint8_t  _xor;
+int      out;
+uint8_t  lfoValue=0;
+bool     doReset=false;
+bool     firstRead=false;
+uint16_t runglerOut;
+bool     render;
+int      in;
+bool     cycle;
+bool     _gate;
+bool     lastDoReset;
+const bool usePin[4]={
+    true,false,true,false};
 
 void createLookup(){
   for(uint16_t i=0;i<256;i++){
@@ -259,7 +258,7 @@ void init() {
 
 // channel 8 can be used to measure the temperature of the chip
 void connectChannel(uint8_t number) {
-  ADMUX &= (11110000);
+  ADMUX &= 0x30; //(11110000);
   ADMUX |= number;  
 }
 

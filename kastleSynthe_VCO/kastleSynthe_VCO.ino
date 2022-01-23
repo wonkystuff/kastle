@@ -61,16 +61,16 @@ uint8_t _out;
 uint16_t time;
 uint8_t mode;
 uint8_t analogChannelRead=1;
+uint8_t pwmCounter;
+uint8_t incr=6,_incr=6;
+uint8_t mapLookup[256];
 uint8_t analogValues[4];
 uint8_t lastAnalogValues[4];
 uint8_t out;
-uint8_t pwmCounter;
-uint8_t mapLookup[256];
 uint8_t _clocks;
-bool flop;
-uint8_t incr=6,_incr=6;
 uint8_t lastOut;
 uint8_t bitShift=3;
+bool flop;
 uint16_t osc2offset=255;
 uint8_t lastAnalogChannelRead;
 bool firstRead=false;
@@ -100,8 +100,12 @@ const uint8_t analogToDigitalPinMapping[4]={
 
 
 uint32_t curveMap(uint8_t value, uint8_t numberOfPoints, uint16_t * tableMap){
-  uint32_t inMin=0, inMax=255, outMin=0, outMax=255;
-  for(int i=0;i<numberOfPoints-1;i++){
+  uint32_t outMax=255;
+  int i;
+  uint32_t inMin=0;
+  uint32_t inMax=255;
+  uint32_t outMin=0;
+  for(i=0;i<numberOfPoints-1;i++){
     if(value >= tableMap[i] && value <= tableMap[i+1]) {
       inMax=tableMap[i+1];
       inMin=tableMap[i];
@@ -155,14 +159,7 @@ void setTimers(void)
    bitWrite(TCCR0B,WGM02,0);
    bitWrite(TCCR0B,CS00,1);
    */
-   PLLCSR |= (1 << PLLE);               // Enable PLL (64 MHz)
-  _delay_us(100);                      // Wait for a steady state
-  while (!(PLLCSR & (1 << PLOCK)));    // Ensure PLL lock
-  PLLCSR |= (1 << PCKE);               // Enable PLL as clock source for timer 1
 
-  cli();                               // Interrupts OFF (disable interrupts globally)
-  
-  
   TCCR0A = 2<<COM0A0 | 2<<COM0B0 | 3<<WGM00;
   TCCR0B = 0<<WGM02 | 1<<CS00;
 

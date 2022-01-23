@@ -201,9 +201,9 @@ void setup()  { //happends at the startup
   if (analogValues[0] < HIGH_THRES)  XYmode = false;
   for (uint8_t i = 1; i < 4; i++) if (analogValues[i] < 200) XYmode = false; //HIGH_THRES
   
-  setFrequency(400);
-  setFrequency2(400);
-  analogValues[WS_2] = 0;
+//  setFrequency(400);
+//  setFrequency2(400);
+//  analogValues[WS_2] = 0;
   
 }
 
@@ -477,8 +477,8 @@ void loop() {
   // noise sample
   synthesis();
   
-  //modeDetect();
-  mode=NOISE;
+  modeDetect();
+  //mode=NOISE;
 
 }
 void modeDetect() {
@@ -504,9 +504,9 @@ ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
     analogChannelRead = analogChannelSequence[analogChannelReadIndex];
     connectChannel(analogChannelRead);
     // set controll values if relevant (value changed)
-    // if(lastAnalogChannelRead==PITCH && lastAnalogValues[PITCH]!=analogValues[PITCH]) setFrequency(analogValues[PITCH]<<2);//constrain(mapLookup[,0,1015));
-    // if(lastAnalogChannelRead==WS_1 && lastAnalogValues[WS_1]!=analogValues[WS_1])  setFrequency2(analogValues[WS_1]<<2);
-    // if(lastAnalogChannelRead==WS_2 && lastAnalogValues[WS_2]!=analogValues[WS_2]) analogValues[WS_2]= analogValues[WS_2];
+    if(lastAnalogChannelRead==PITCH && lastAnalogValues[PITCH]!=analogValues[PITCH]) setFrequency(analogValues[PITCH]<<2);//constrain(mapLookup[,0,1015));
+    if(lastAnalogChannelRead==WS_1 && lastAnalogValues[WS_1]!=analogValues[WS_1])  setFrequency2(analogValues[WS_1]<<2);
+    if(lastAnalogChannelRead==WS_2 && lastAnalogValues[WS_2]!=analogValues[WS_2]) analogValues[WS_2]= analogValues[WS_2];
     firstRead = true;
     //start the ADC - at completion the interupt will be called again
     startConversion();

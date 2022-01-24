@@ -35,63 +35,9 @@
 #include <avr/io.h>        // Adds useful constants
 #include <util/delay.h>
 
-//#include <CB_AT.h>
-//#include <CB2_AT.h>
-//#include <CB3_AT.h>
-//#include <CB4_AT.h>
-//#include <GB_BLIP_AT.h>
-//#include <GB_BZZ_AT.h>
-//#include <GB_GLITCH_AT.h>
-//#include <GB_HH_AT.h>
-//#include <GB_KICK_AT.h>
-//#include <GB_SNARE_AT.h>
-//#include <GB_TUI_AT.h>
-//#include <GL_A_AT.h>
-//#include <GL_B_AT.h>
-//#include <GL_C_AT.h>
-//#include <GL_D_AT.h>
-//#include <GL_E_AT.h>
-//#include <GL_F_AT.h>
-//#include <GL_G_AT.h>
-//#include <GL_H_AT.h>
-//#include <GL_I_AT.h>
-//#include <HAT_AT.h>
-//#include <HAT2_AT.h>
-//#include <KICK_AT.h>
-//#include <KICK2_AT.h>
-//#include <RIDE_AT.h>
-//#include <SNARE_AT.h>
-//#include <SNARE2_AT.h>
-//#include <TR_CB_AT.h>
-//#include <TR_CLAP_AT.h>
-
-//#include <TR_KICK_AT.h>
-//#include <TR_OH_AT.h>
-//#include <TR_RIM_AT.h>
-//#include <TR_SNARE_AT.h>
-//#include <TR_TOM_AT.h>
-
-//#include "SINE.h" //sinewave wavetable - modified but originnaly from the Mozzi library
-
 #include "TR_HH_AT.h"
-//#include <SAW.h>
-//#include <CHEB4.h>
-
-
-//for debugging purposes
-//#include "SoftwareSerial.h"
-//const int Rx = 8;
-//const int Tx = 3;
-//SoftwareSerial mySerial(Rx, Tx); //use only for debugging
 
 //global variables
-
-
-#define WSMAP_POINTS 5
-uint16_t wsMap[10] = {
-  0, 63, 127, 191, 234,   15, 100, 160, 210, 254
-};
-
 
 uint8_t _out;
 uint16_t time;
@@ -199,28 +145,24 @@ void setTimers(void)
 
   //  setup timer 0 to run fast for audiorate interrupt
 
-  TCCR1 = 0;                  //stop the timer
-  TCNT1 = 0;                  //zero the timer
-  GTCCR = _BV(PSR1);          //reset the prescaler
-  OCR1A = 255;                //set the compare value
+  TCCR1 = 0;                  // stop the timer
+  TCNT1 = 0;                  // zero the timer
+  GTCCR = _BV(PSR1);          // reset the prescaler
+  OCR1A = 255;                // set the compare value
   OCR1C = 255;
   // OCR1C = 31;
-  TIMSK =  _BV(OCIE1A);// _BV(ICIE1) | | _BV(TOIE0);    //TOIE0    //interrupt on Compare Match A
+  TIMSK =  _BV(OCIE1A);      // interrupt on Compare Match A
   //start timer, ctc mode, prescaler clk/1
-  TCCR1 = _BV(CTC1) | _BV(CS12);// | _BV(CS10) ;//| _BV(CS11);//  | _BV(CS11) ;// //| _BV(CS13) | _BV(CS12) | _BV(CS11) |
-
-  // GTCCR  = (1 << PWM1B) | (1 << COM1B1); // PWM, output on pb4, compare with OCR1B (see interrupt below), reset on match with OCR1C
-  //OCR1C  = 0xff;                         // 255
-  // TCCR1  = (1 << CS10);                  // no prescale
+  TCCR1 = _BV(CTC1) | _BV(CS12);
 
   sei();
-  // TIMSK |=_BV(TOIE0);
 }
 
 uint16_t clocks() {
   //return _clocks;
   return TCNT0 | (_clocks << 8);
 }
+
 void writeWave(int wave) {
   switch (wave) {
     case 0:
@@ -329,7 +271,7 @@ const uint8_t multiplier[24] = {
 void setFrequency2(uint16_t input) {
   if (mode == NOISE)
   {
-    frequency2 = (((input - 300) << 2) + 1) / 2; //sampleEnd=map(input,300,1024,0,sampleLength);//
+    frequency2 = (((input - 375) << 2) + 1) / 2; //sampleEnd=map(input,300,1024,0,sampleLength);//
   }
   else if (   mode == TAH)
   {
@@ -360,42 +302,54 @@ void setFrequency(uint16_t input) {
 
 uint8_t _sample;
 uint8_t _saw, _lastSaw;
-void synthesis() {
-  if (mode == FM)
+
+void synthesis(void)
+{
+  uint8_t _p8  = _phase >> 8;
+  uint8_t _p28 = _phase2 >> 8;
+  uint8_t _p48 = _phase4 >> 8;
+  uint8_t _p58 = _phase5 >> 8;
+  
+  switch(mode)
   {
-    _lastSaw = _saw;
-    _saw = (((255 - (_phase >> 8)) * (analogValues[WS_2])) >> 8);
-    // uint8_t _p=(_phase4 >> 8)+128;
-    sample2 = ((_saw * wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase5 >> 8] * (255 - analogValues[WS_2])) >> 8);
-    if (_lastSaw < _saw)
+    case FM:
     {
-      _phase4 = 64 << 8; // hard sync for phase distortion
+      _lastSaw = _saw;
+      _saw = (((255 - (_p8)) * (analogValues[WS_2])) >> 8);
+      // uint8_t _p=(_phase4 >> 8)+128;
+      sample2 = ((_saw * wavetable[_p48] ) >> 8) + ((wavetable[_p58] * (255 - analogValues[WS_2])) >> 8);
+      if (_lastSaw < _saw)
+      {
+        _phase4 = 64 << 8; // hard sync for phase distortion
+      }
+      uint8_t shft = abs(_saw - _lastSaw);
+      if (shft > 3)
+      {
+        _phase5 += shft << 8; //soft sync for previous settings of waveshape
+      }
     }
-    uint8_t shft = abs(_saw - _lastSaw);
-    if (shft > 3)
+    break;
+
+    case NOISE:
     {
-      _phase5 += shft << 8; //soft sync for previous settings of waveshape
+      if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5)
+      {
+        _phase = 0;
+      }
+      _sample = pgm_read_byte_near(sampleTable + (_phase >> 2));
+      _sample = (_sample * wavetable[_p28]) >> 8;
+      sample = _sample;
+      sample2 = (wavetable[_phase3 + _p8]);
     }
-  }
-  else if (mode == NOISE)
-  {
-    if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5)
+    break;
+    case TAH:
     {
-      _phase = 0;
+      if (_p28 > analogValues[WS_2])
+      {
+        sample = (wavetable[_p8] );
+      }
+      sample2 = (wavetable[_p28] + wavetable[_p48] + wavetable[_p58] + wavetable[_phase6 >> 8]) >> 2;
     }
-    _sample = (char)pgm_read_byte_near(sampleTable + (_phase >> 2));
-    _sample = (_sample * wavetable[_phase2 >> 8]) >> 8;
-    sample = _sample;
-    sample2 = (wavetable[_phase3 + (_phase >> 8)]);
-  }
-  else if (mode == TAH)
-  {
-    if ((_phase2 >> 8) > analogValues[WS_2])
-    {
-      _phs = _phase >> 8;
-      sample = (wavetable[_phs] );
-    }
-    sample2 = (wavetable[_phase2 >> 8] + wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8] + wavetable[_phase6 >> 8]) >> 2;
   }
 }
 

@@ -29,12 +29,7 @@
   -v1.5 uses bits of code from miniMO DCO http://www.minimosynth.com/
 */
 
-/*
- * wonkystuff notes:
- * In arduino 1.8.19 IDE, burn bootloader with clock==16MHz
- */
-
-//#define F_CPU 8000000  // This is used by delay.h library
+//#define F_CPU 8000000  // This is used by delay.h library - now set by the IDE
 #include <stdlib.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>        // Adds useful constants

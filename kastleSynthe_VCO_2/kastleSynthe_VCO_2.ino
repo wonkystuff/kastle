@@ -216,88 +216,111 @@ uint16_t _phase2, _phase4, _phase5, _phase6;
 int frequency2, frequency4, frequency5, frequency6;
 uint8_t  _phase3;
 
-ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
+void
+fm(void)
 {
-  OCR0A = sample;
-  OCR0B = sample2;
-  
-  //_lastPhase=_phase;
   _phase += frequency;
+  uint8_t _p8  = _phase >> 8;
 
   _phase2 += frequency2;
-  _phase4 += frequency4;
+  uint8_t _p28 = _phase2 >> 8;
+
+  static uint8_t _lastDownRamp;
+  
+  uint8_t wsr = analogValues[WS_2];
+  uint8_t wsl= 255-wsr;
+
+  uint8_t _phs = (_phase + (wsr * wavetable[_p28])) >> 6;
+  sample = (wavetable[_phs] );
+
+  uint8_t downRamp = 255 - _p8;
+  
+  uint8_t shft;
+  // Start of ramp |\, so hard sync the start of phase4
+  if (_lastDownRamp < downRamp)
+  {
+    _phase4 = 64 << 8; // hard sync for phase distortion
+    shft = downRamp - _lastDownRamp;
+  }
+  else
+  {
+    _phase4 += frequency4;
+    shft = _lastDownRamp - downRamp;
+  }
+
+  if (shft > 3)
+  {
+    _phase4 += shft << 8; //soft sync for previous settings of waveshape
+  }
+
   _phase5 += frequency5;
 
+  uint8_t _saw = (downRamp * wsr) >> 8;
+  uint8_t pdSignal = ((_saw * wavetable[_phase4 >> 8] ) >> 8);
+  uint8_t sinSignal = ((wavetable[_phase5 >> 8] * wsl) >> 8);
+  sample2 =  pdSignal + sinSignal;
+
+  // Remember the _saw value for next time...
+  _lastDownRamp = downRamp;
+}
+
+void
+noise(void)
+{
+  uint8_t _p8  = _phase >> 8;
+  uint8_t _p28 = _phase2 >> 8;
+
+  _phase += frequency;
+  _phase2 += frequency2;
+
+  if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5)
+  {
+    _phase = 0;
+  }
+  uint8_t _sample = (char)pgm_read_byte(sampleTable + (_phase >> 2));
+  sample = (_sample * wavetable[_p28]) >> 8;
+  sample2 = (wavetable[_phase3 + _p8]);
+  _phase3 = _phase2 >> 5;
+}
+
+void
+tah(void)
+{
   uint8_t _p8  = _phase >> 8;
   uint8_t _p28 = _phase2 >> 8;
   uint8_t _p48 = _phase4 >> 8;
   uint8_t _p58 = _phase5 >> 8;
+  uint8_t _p68 = _phase6 >> 8;
 
-  switch(mode)
+  _phase += frequency;
+  _phase2 += frequency2;
+  _phase4 += frequency4;
+  _phase5 += frequency5;
+  _phase6 += frequency6;
+
+  if (_p28 > analogValues[WS_2])
   {
-    case FM:
-      {
-        uint8_t _saw;
-        static uint8_t _lastSaw;
-        uint8_t ws2 = analogValues[WS_2];
-        uint8_t _phs = (_phase + (ws2 * wavetable[_p28])) >> 6;
-        sample = (wavetable[_phs] );
-
-        _saw = (((255 - (_p8)) * ws2) >> 8);
-  
-        sample2 = ((_saw * wavetable[_p48] ) >> 8) + ((wavetable[_p58] * (255 - ws2)) >> 8);
-        
-        uint8_t shft;
-        if (_lastSaw < _saw)
-        {
-          _phase4 = 64 << 8; // hard sync for phase distortion
-          shft = _saw - _lastSaw;
-        }
-        else
-        {
-          shft = _lastSaw - _saw;
-        }
-  
-        if (shft > 3)
-        {
-          _phase5 += shft << 8; //soft sync for previous settings of waveshape
-        }
-        // Remember the _saw value for next time...
-        _lastSaw = _saw;
-      }
-      break;
-
-    case NOISE:
-      {
-        if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5)
-        {
-          _phase = 0;
-        }
-        uint8_t _sample = (char)pgm_read_byte(sampleTable + (_phase >> 2));
-        sample = (_sample * wavetable[_p28]) >> 8;
-        sample2 = (wavetable[_phase3 + _p8]);
-        _phase3 = _phase2 >> 5;
-      }
-      break;
-
-    case TAH:
-      {
-        uint8_t _p68 = _phase6 >> 8;
-        _phase6 += frequency6;
-        if (_p28 > analogValues[WS_2])
-        {
-          sample = wavetable[_p8];
-        }
-        sample2 = (wavetable[_p28] + wavetable[_p48] + wavetable[_p58] + wavetable[_p68]) >> 2;
-      }
-      break;
+    sample = wavetable[_p8];
   }
+  sample2 = (wavetable[_p28] + wavetable[_p48] + wavetable[_p58] + wavetable[_p68]) / 4;
 }
 
-const uint8_t multiplier[24] = {
-  2, 2, 2, 3, 1, 2, 4, 4,
-  3, 4, 5, 2, 1, 5, 6, 8,
-  3, 8, 7, 8, 7, 6, 8, 16
+typedef void (*synth_t)(void);
+
+synth_t synthFunc = fm;
+
+ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
+{
+  OCR0A = sample;
+  OCR0B = sample2;
+
+  synthFunc();
+}
+
+const uint8_t multiplier[3][8] = {
+  {2, 2, 2, 3, 1, 2, 4, 4},
+  {3, 4, 5, 2, 1, 5, 6, 8},
+  {3, 8, 7, 8, 7, 6, 8, 16}
 };
 
 void setFrequency2(uint16_t input) {
@@ -309,9 +332,10 @@ void setFrequency2(uint16_t input) {
   {
     uint8_t multiplierIndex = (analogValues[WS_2] + (1 << 4)) >> 5; // (1<<4) offset is to round the value into the 'middle' of the index-band, otherwise band 8 is hard to reach
     frequency2 = (input << 2) + 1;
-    frequency4 = (frequency2 + 1) * multiplier[multiplierIndex]; //+analogValues[WS_2]>>4
-    frequency5 = (frequency2 - 3) * multiplier[multiplierIndex + 8]; //+analogValues[WS_2]>>3
-    frequency6 = (frequency2 + 7) * multiplier[multiplierIndex + 16]; //+analogValues[WS_2]>>2
+    frequency4 = (frequency2 + 1) * multiplier[0][multiplierIndex]; //+analogValues[WS_2]>>4
+    frequency5 = (frequency2 - 3) * multiplier[1][multiplierIndex]; //+analogValues[WS_2]>>3
+    frequency6 = (frequency2 + 7) * multiplier[2][multiplierIndex]; //+analogValues[WS_2]>>2
+    //frequency6 = ((frequency2 + frequency) /2) * multiplier[2][multiplierIndex]; //+analogValues[WS_2]>>2
   }
   else
   {
@@ -336,19 +360,23 @@ void setFrequency(uint16_t input) {
 void loop()
 {
   //synthesis();  // create secondary output
+  modeDetect();
 }
 
 void modeDetect() {
   if (analogValues[0] < LOW_THRES)
   {
+    synthFunc = noise;
     mode = NOISE; //, incr=11,_incr=6, bitShift=2, osc2offset=270;
   }
   else if (analogValues[0] > HIGH_THRES)
   {
+    synthFunc = tah;
     mode = TAH; //, incr=24,_incr=6,bitShift=4,osc2offset=255;
   }
   else
   {
+    synthFunc = fm;
     mode = FM; //, incr=11,_incr=5,bitShift=4,osc2offset=255;
   }
 }
@@ -370,10 +398,10 @@ ISR(ADC_vect)
 
     //set ADC MULTIPLEXER to read the next channel
     lastAnalogChannelRead = analogChannelRead;
-    if (!analogChannelRead)
-    {
-      modeDetect();
-    }
+//    if (!analogChannelRead)
+//    {
+//      modeDetect();
+//    }
     analogChannelReadIndex++;
     if (analogChannelReadIndex > 5)
     {

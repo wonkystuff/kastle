@@ -98,9 +98,7 @@ uint16_t wsMap[10] = {
 uint8_t _out;
 uint16_t time;
 uint8_t mode;
-uint8_t analogChannelRead = 1;
 uint8_t analogValues[4];
-uint8_t lastAnalogValues[4];
 uint8_t out;
 uint8_t pwmCounter;
 //uint8_t mapLookup[256];
@@ -110,7 +108,6 @@ uint8_t incr = 6, _incr = 6;
 uint8_t lastOut;
 uint8_t bitShift = 3;
 uint16_t osc2offset = 255;
-uint8_t lastAnalogChannelRead;
 bool firstRead = false;
 
 uint8_t pwmIncrement, _upIncrement, _downIncrement, upIncrement, downIncrement;
@@ -133,11 +130,12 @@ const uint8_t analogToDigitalPinMapping[4] = {
 #define HIGH_MIX 900
 
 //defines for synth parameters
+#define MODE 0
+#define WS_2 1
 #define PITCH 2
 #define WS_1 3
-#define WS_2 1
 
-const char PROGMEM sinetable[128] = {
+const unsigned char PROGMEM sinetable[128] = {
   0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62, 65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124,
   128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 162, 165, 167, 170, 173, 176, 179, 182, 185, 188, 190, 193, 196, 198, 201, 203, 206, 208, 211, 213, 215, 218, 220, 222, 224, 226, 228, 230, 232, 234, 235, 237, 238, 240, 241, 243, 244, 245, 246, 248, 249, 250, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255,
 };
@@ -168,7 +166,6 @@ void createLookup() {
 }
 
 
-bool XYmode;
 uint8_t startupRead = 0;
 void setup()  { //happends at the startup
   writeWave(0);
@@ -184,27 +181,12 @@ void setup()  { //happends at the startup
 
   //setup ADC and run it in interrupt
   init();
-  connectChannel(analogChannelRead);
+  connectChannel(MODE);
   startConversion();
-  //long _time=millis();
-  /*
-    while(millis()-_time<4){
-    loop();
-    }
-  */
   _delay_us(100);
   while (startupRead < 12) {
     loop();
-  }
-  //  } //read voltages
-  XYmode = true; //if all pots are hight and mode is HIGH than render XY mode instead
-  if (analogValues[0] < HIGH_THRES)  XYmode = false;
-  for (uint8_t i = 1; i < 4; i++) if (analogValues[i] < 200) XYmode = false; //HIGH_THRES
-  
-//  setFrequency(400);
-//  setFrequency2(400);
-//  analogValues[WS_2] = 0;
-  
+  }  
 }
 
 void setTimers(void)
@@ -376,7 +358,9 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 
 uint16_t sampleEnd;
 const uint8_t multiplier[24] = {
-  2, 2, 2, 3, 1, 2, 4, 4, 3, 4, 5, 2, 1, 5, 6, 8, 3, 8, 7, 8, 7, 6, 8, 16
+  2, 2, 2, 3, 1, 2, 4, 4,
+  3, 4, 5, 2, 1, 5, 6, 8,
+  3, 8, 7, 8, 7, 6, 8, 16
 };
 void setFrequency2(uint16_t input) {
   if (   mode == NOISE) frequency2 = (((input - 300) << 2) + 1) / 2; //sampleEnd=map(input,300,1024,0,sampleLength);//
@@ -433,20 +417,13 @@ uint8_t _saw, _lastSaw;
 void synthesis() {
   if (mode == FM) {
 
-    if (XYmode) {
-      _phs90 = _phs + 64;
-      sample2 = (wavetable[_phs90] );
-    }
-    else {
-      _lastSaw = _saw;
-      _saw = (((255 - (_phase >> 8)) * (analogValues[WS_2])) >> 8);
-      // uint8_t _p=(_phase4 >> 8)+128;
-      sample2 = ((_saw * wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase5 >> 8] * (255 - analogValues[WS_2])) >> 8);
-      if (_lastSaw < _saw) _phase4 = 64 << 8; // hard sync for phase distortion
-      uint8_t shft = abs(_saw - _lastSaw);
-      if (shft > 3) _phase5 += shft << 8; //soft sync for previous settings of waveshape
-    }
-
+    _lastSaw = _saw;
+    _saw = (((255 - (_phase >> 8)) * (analogValues[WS_2])) >> 8);
+    // uint8_t _p=(_phase4 >> 8)+128;
+    sample2 = ((_saw * wavetable[_phase4 >> 8] ) >> 8) + ((wavetable[_phase5 >> 8] * (255 - analogValues[WS_2])) >> 8);
+    if (_lastSaw < _saw) _phase4 = 64 << 8; // hard sync for phase distortion
+    uint8_t shft = abs(_saw - _lastSaw);
+    if (shft > 3) _phase5 += shft << 8; //soft sync for previous settings of waveshape
   }
 
   if (mode == NOISE) {
@@ -461,13 +438,8 @@ void synthesis() {
 
   if (mode == TAH) {
     if ((_phase2 >> 8) > analogValues[WS_2])  _phs = _phase >> 8, sample = (wavetable[_phs] );
-    if (XYmode) {
-      _phs90 = _phs + 64;
-      sample2 = (wavetable[_phs90] );
-    }
-    else {
-      sample2 = (wavetable[_phase2 >> 8] + wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8] + wavetable[_phase6 >> 8]) >> 2;
-    }
+    
+    sample2 = (wavetable[_phase2 >> 8] + wavetable[_phase4 >> 8] + wavetable[_phase5 >> 8] + wavetable[_phase6 >> 8]) >> 2;
   }
 }
 void loop() {
@@ -486,31 +458,39 @@ void modeDetect() {
   else if (analogValues[0] > HIGH_THRES) mode = TAH; //, incr=24,_incr=6,bitShift=4,osc2offset=255;
   else mode = FM; //, incr=11,_incr=5,bitShift=4,osc2offset=255;
 }
+uint8_t analogChannelSequence[6] = {
+  MODE, WS_2,
+  MODE, PITCH,
+  MODE, WS_1
+};
 
-
-uint8_t analogChannelSequence[6] = {0, 1, 0, 2, 0, 3};
-uint8_t analogChannelReadIndex;
 ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
+
+  static uint8_t analogChannelRead = 1;
+  static uint8_t analogChannelReadIndex;
   startupRead++;
+
   if (!firstRead) { // discard first reading due to ADC multiplexer crosstalk
-    //update values and remember last values
-    lastAnalogValues[analogChannelRead] = analogValues[analogChannelRead];
+
+    //update values
     analogValues[analogChannelRead] = getConversionResult() >> 2;
-    //set ADC MULTIPLEXER to read the next channel
-    lastAnalogChannelRead = analogChannelRead;
-    if (!analogChannelRead) modeDetect();
+
+    // set controll values if relevant (value changed)
+    if (analogChannelRead == MODE)  modeDetect();
+    if (analogChannelRead == PITCH) setFrequency(analogValues[PITCH]<<2);//constrain(mapLookup[,0,1015));
+    if (analogChannelRead == WS_1)  setFrequency2(analogValues[WS_1]<<2);
+
+
     analogChannelReadIndex++;
     if (analogChannelReadIndex > 5) analogChannelReadIndex = 0;
     analogChannelRead = analogChannelSequence[analogChannelReadIndex];
+
+    //set ADC MULTIPLEXER to read the next channel
     connectChannel(analogChannelRead);
-    // set controll values if relevant (value changed)
-    if(lastAnalogChannelRead==PITCH && lastAnalogValues[PITCH]!=analogValues[PITCH]) setFrequency(analogValues[PITCH]<<2);//constrain(mapLookup[,0,1015));
-    if(lastAnalogChannelRead==WS_1 && lastAnalogValues[WS_1]!=analogValues[WS_1])  setFrequency2(analogValues[WS_1]<<2);
-    if(lastAnalogChannelRead==WS_2 && lastAnalogValues[WS_2]!=analogValues[WS_2]) analogValues[WS_2]= analogValues[WS_2];
     firstRead = true;
+
     //start the ADC - at completion the interupt will be called again
     startConversion();
-
   }
   else {
     /*
@@ -519,17 +499,8 @@ ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
       discarge charge built up in passive mixing ciruit using zener diodes
       because zeners have some higher unpredictable capacitance, various voltages might get stuck on the pin
     */
-    //  if(analogChannelRead!=0) - by mohlo vyresit celou situaci
-    // if( mode==PHASE_DIST && analogChannelRead!=PITCH){  // //this would somehow make the  reset pin trigger because the reset pin is already pulled to ground
 
-
-
-    if ( mode == NOISE) { // && analogChannelRead!=PITCH){//if(analogChannelRead==0){
-      //  bitWrite(PORTB,analogToDigitalPinMapping[analogChannelRead],1);
-      // renderDecay();
-    }
-
-    else {
+    if ( mode != NOISE) {
       if (analogValues[analogChannelRead] < 200) bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 1);
       bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 0);
       bitWrite(PORTB, analogToDigitalPinMapping[analogChannelRead], 0);
@@ -591,8 +562,8 @@ void init() {
 
 // channel 8 can be used to measure the temperature of the chip
 void connectChannel(uint8_t number) {
-  ADMUX &= (11110000);
-  ADMUX |= number;
+//  ADMUX &= (11110000);
+  ADMUX = number;
 }
 
 void startConversion() {
@@ -611,12 +582,3 @@ uint16_t getConversionResult() {
   uint16_t result = ADCL;
   return result | (ADCH << 8);
 }
-
-
-
-
-
-
-
-
-

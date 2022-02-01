@@ -45,6 +45,7 @@
  
 // F_CPU is now defined by the IDE - here as a **reminder**
 #//define F_CPU 8000000  // This is used by delay.h library
+
 #include <stdlib.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>        // Adds useful constants
@@ -52,14 +53,6 @@
 
 #include "TR_HH_AT.h"
 
-//global variables
-
-uint8_t mode;
-uint8_t analogValues[4];
-
-const uint8_t analogToDigitalPinMapping[4] = {
-  PORTB5, PORTB2, PORTB4, PORTB3
-};
 
 //defines for synth types
 //all are dual oscillator setups -
@@ -75,6 +68,15 @@ const uint8_t analogToDigitalPinMapping[4] = {
 #define WS_2   1u
 #define PITCH  2u
 #define WS_1   3u
+
+//global variables
+
+uint8_t mode = NOISE;
+uint8_t analogValues[4];
+
+const uint8_t analogToDigitalPinMapping[4] = {
+  PORTB5, PORTB2, PORTB4, PORTB3
+};
 
 const unsigned char PROGMEM sinetable[128] = {
   0,   0,   0,   0,   1,   1,   1,   2,   2,   3,   4,   5,   5,   6,   7,   9,
@@ -289,7 +291,7 @@ setFrequency2(uint16_t input)
 void
 setFrequency(uint16_t input)
 {
-  frequency = mode == NOISE ? (input - 200) : input;
+  frequency = mode == NOISE ? (input - 210) : input;
   frequency <<= 2;
   frequency++;
 }

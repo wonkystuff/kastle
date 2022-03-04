@@ -109,16 +109,10 @@ Kastle Drum Features
 
 //global variables
 
-volatile uint8_t mode;
-uint8_t analogChannelRead = 1;
+uint8_t mode;
 uint8_t analogValues[4];
 uint8_t lastAnalogValues[4];
-uint8_t lastAnalogChannelRead;
-bool firstRead = false;
 
-const uint8_t analogToDigitalPinMapping[4] = {
-  PORTB5, PORTB2, PORTB4, PORTB3
-};
 
 //defines for synth types
 //all are dual oscillator setups -
@@ -127,17 +121,28 @@ const uint8_t analogToDigitalPinMapping[4] = {
 #define TAH 2 //aka track & hold modulation (downsampling with T&H)
 
 
-#define LOW_THRES 140
+#define LOW_THRES 150
 #define HIGH_THRES 162
 
 //defines for synth parameters
-#define PITCH 3
-#define WS_1 2
-#define WS_2 1
+#define PITCH 3u
+#define DRUMSEL  2u
+#define DECAY  1u
+#define TRIG  0u
+
+const uint8_t analogToDigitalPinMapping[4] = {
+  PORTB5, PORTB2, PORTB4, PORTB3
+};
 
 const uint8_t PROGMEM sinetable[128] = {
-  0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62, 65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124,
-  128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 162, 165, 167, 170, 173, 176, 179, 182, 185, 188, 190, 193, 196, 198, 201, 203, 206, 208, 211, 213, 215, 218, 220, 222, 224, 226, 228, 230, 232, 234, 235, 237, 238, 240, 241, 243, 244, 245, 246, 248, 249, 250, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255,
+  0,   0,   0,   0,   1,   1,   1,   2,   2,   3,   4,   5,   5,   6,   7,   9,
+  10,  11,  12,  14,  15,  17,  18,  20,  21,  23,  25,  27,  29,  31,  33,  35,
+  37,  40,  42,  44,  47,  49,  52,  54,  57,  59,  62,  65,  67,  70,  73,  76,
+  79,  82,  85,  88,  90,  93,  97,  100, 103, 106, 109, 112, 115, 118, 121, 124,
+  128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 162, 165, 167, 170, 173,
+  176, 179, 182, 185, 188, 190, 193, 196, 198, 201, 203, 206, 208, 211, 213, 215,
+  218, 220, 222, 224, 226, 228, 230, 232, 234, 235, 237, 238, 240, 241, 243, 244,
+  245, 246, 248, 249, 250, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255,
 };
 
 //the actual table that is read to generate the sound
@@ -145,13 +150,12 @@ uint8_t wavetable[256];
 
 uint8_t startupRead = 0;
 
-volatile uint8_t decayVolume;
+volatile uint8_t  decayVolume;
 volatile uint16_t decayTime = 50;
+volatile uint8_t  decayVolume2 = 0;
 
-volatile uint8_t decayVolume2 = 0;
-
-void setup()
-{ //happends at the startup
+void setup(void)
+{  // happens at the startup
   writeWave(0);
   digitalWrite(5, HIGH); //turn on pull up resistor for the reset pin
   //set outputs
@@ -161,8 +165,8 @@ void setup()
   setTimers(); //setup interrupts
 
   //setup ADC and run it in interrupt
-  init();
-  connectChannel(analogChannelRead);
+  initADC();
+  connectChannel(TRIG);
   startConversion();
   _delay_us(100);
   while (startupRead < 12) {
@@ -172,23 +176,12 @@ void setup()
 
 void setTimers(void)
 {
-  /*
-    TCCR0A=0;
-    TCCR0B=0;
-    bitWrite(TCCR0A,COM0A0,0);
-    bitWrite(TCCR0A,COM0A1,1);
-    bitWrite(TCCR0A,COM0B0,0);
-    bitWrite(TCCR0A,COM0B1,1);
-    bitWrite(TCCR0A,WGM00,1);
-    bitWrite(TCCR0A,WGM01,1);
-    bitWrite(TCCR0B,WGM02,0);
-    bitWrite(TCCR0B,CS00,1);
-  */
   PLLCSR |= (1 << PLLE);               // Enable PLL (64 MHz)
   _delay_us(100);                      // Wait for a steady state
-  while (!(PLLCSR & (1 << PLOCK)));    // Ensure PLL lock
+  while (!(PLLCSR & (1 << PLOCK)))
+    ;    // Ensure PLL lock
   PLLCSR |= (1 << PCKE);               // Enable PLL as clock source for timer 1
-  PLLCSR |= (1 << LSM); //low speed mode 32mhz
+  PLLCSR |= (1 << LSM);                // low speed mode 32mhz
   cli();                               // Interrupts OFF (disable interrupts globally)
 
 
@@ -239,7 +232,9 @@ void writeWave(int wave) {
 }
 
 //functions to populate the wavetable
-void sineWave() {                                       //too costly to calculate on the fly, so it reads from the sine table. We use 128 values, then mirror them to get the whole cycle
+void sineWave(void)
+{
+  // too costly to calculate on the fly, so it reads from the sine table. We use 128 values, then mirror them to get the whole cycle
   for (int i = 0; i < 128; ++i) {
     wavetable[i] = pgm_read_byte_near(sinetable + i);
   }
@@ -248,12 +243,16 @@ void sineWave() {                                       //too costly to calculat
     wavetable[i] = wavetable[256 - i] ;
   }
 }
-void sawtoothWave() {
+
+void sawtoothWave(void)
+{
   for (int i = 0; i < 256; ++i) {
     wavetable[i] = i; // sawtooth
   }
 }
-void triangleWave() {
+
+void triangleWave(void)
+{
   for (int i = 0; i < 128; ++i) {
     wavetable[i] = i * 2;
   }
@@ -263,7 +262,9 @@ void triangleWave() {
     value -= 2;
   }
 }
-void squareWave() {
+
+void squareWave(void)
+{
   for (int i = 0; i < 128; ++i) {
     wavetable[i] = 255;
   }
@@ -271,25 +272,27 @@ void squareWave() {
     wavetable[i] = 1;                  //0 gives problems (offset and different freq), related to sample  = ((wavetable[phase >> 8]*amplitude)>>8);
   }
 }
-void zeroWave() {
+
+void zeroWave(void)
+{
   for (int i = 0; i < 256; ++i) {
     wavetable[i] = 1;                  //0 gives problems
   }
 }
+
 /*
   ISR(TIMER0_OVF_vect){ // increment _clocks at PWM interrupt overflow - this gives 16bit time consciousnes to the chip (aproxx 2 seconds before overflow)
   _clocks++;
   }
 */
-volatile uint8_t  sample;
-volatile uint16_t _phase, _lastPhase;
-volatile uint16_t frequency;
-volatile uint8_t  sample2;
-volatile uint16_t _phase2, _phase4, _phase5, _phase6;
-volatile uint16_t frequency2, frequency4, frequency5, frequency6;
-volatile uint8_t  _phs;
-volatile uint8_t  _phase3;
-volatile uint8_t  pitchEnv;
+uint8_t  sample;
+uint8_t  sample2;
+uint16_t _phase, _lastPhase;
+uint16_t frequency;
+uint16_t _phase2, _phase4, _phase5, _phase6;
+uint16_t frequency2, frequency4, frequency5, frequency6;
+uint8_t  _phase3;
+bool     pitchEnv;
 
 ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 {
@@ -312,11 +315,10 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
     _phase4 += frequency4;
   }
 
-
-  //_phase5 += frequency5;
   // _phase5 += frequency5;
-  if (mode == FM) {
-    _phs = (_phase + (analogValues[WS_2] * wavetable[_phase2 >> 8])) >> 6;
+  if (mode == FM)
+  {
+    uint8_t _phs = (_phase + (analogValues[DECAY] * wavetable[_phase2 >> 8])) >> 6;
     sample = ((wavetable[_phs] ) * decayVolume) >> 8;
   }
   else if (mode == NOISE)
@@ -328,24 +330,26 @@ ISR(TIMER1_COMPA_vect)  // render primary oscillator in the interupt
 }
 
 
-void setFrequency2(uint16_t input) {
-
+void setFrequency2(uint16_t input)
+{
   mode = (input + 64) >> 7;
 
   if (mode > 6)
   {
-    bitWrite(TCCR0B, CS00, 0), bitWrite(TCCR0B, CS01, 1);
+     bitWrite(TCCR0B, CS00, 0);
+     bitWrite(TCCR0B, CS01, 1);
   }
   else
   {
-    bitWrite(TCCR0B, CS00, 1), bitWrite(TCCR0B, CS01, 0);
+    bitWrite(TCCR0B, CS00, 1);
+    bitWrite(TCCR0B, CS01, 0);
   }
   frequency2 = (input << 4) + 1;
   frequency4 = 512 - input;
 }
 
-void setFrequency(uint16_t input) {
-
+void setFrequency(uint16_t input)
+{
   if (mode == NOISE )
   {
     frequency = ((input - 200) << 2) + 1; //NOISE
@@ -367,7 +371,7 @@ void synthesis(void)
 {
   uint8_t _sample2, _lastSample2, _sample;
 
-  if ((_phase3 >> 2) >= (analogValues[WS_1]) << 4)
+  if ((_phase3 >> 2) >= (analogValues[DRUMSEL]) << 4)
   {
     _phase3 = 0;
   }
@@ -384,13 +388,14 @@ void synthesis(void)
   }
   sample2 =  ((_sample2 * (decayVolume2)) >> 8);
   
-  switch(mode) {
+  switch(mode)
+  {
     case FM:
       return; // avoid doing the common stuff below
       break;
 
     case NOISE:
-      if ((_phase >> 2) >= (analogValues[WS_2] - 100) << 5) {
+      if ((_phase >> 2) >= (analogValues[DECAY] - 100) << 5) {
         _phase = 0;
       }
       _sample = (char)pgm_read_byte_near(&sampleTable[_phase >> 2]) + 128;
@@ -398,8 +403,9 @@ void synthesis(void)
       break;
       
     case TAH:
-      if ((_phase2 >> 8) < analogValues[WS_2] + 5) {
-        _phs = _phase >> 8;
+      if ((_phase2 >> 8) < analogValues[DECAY] + 5)
+      {
+        uint8_t _phs = _phase >> 8;
         _sample = wavetable[_phs];
       }
       break;
@@ -408,45 +414,52 @@ void synthesis(void)
       // Sample-based sounds
       uint16_t zz = _phase >> SAMPLE_PHASE_SHIFT;
       const char *sPtr;
-      if (mode == 3) {
-        if (zz > sample2Length)
-        {
-          _phase = 0;
-          zz = 0;
-        }
-        sPtr = &sample2Table[zz];
-      }
-      else if (mode == 4) {
-        if (zz > sample3Length)
-        {
-          _phase = 0;
-          zz = 0;
-        }
-        sPtr = &sample3Table[zz];
-      }
-      else if (mode == 5) {
-        if (zz > sample4Length)
-        {
-          _phase = 0;
-          zz = 0;
-        }
-        sPtr = &sample4Table[zz];
-      }
-      else if (mode == 6) {
-        if (zz > sampleLength)
-        {
-          _phase = 0;
-          zz = 0;
-        }
-        sPtr = &sampleTable[zz];
-      }
-      else if (mode == 7) {
-        if (zz > sample4Length)
-        {
-          _phase = 0;
-          zz = 0;
-        }
-        sPtr = &sample4Table[zz];
+      switch (mode)
+      {
+        case 3:
+          if (zz > sample2Length)
+          {
+            _phase = 0;
+            zz = 0;
+          }
+          sPtr = &sample2Table[zz];
+          break;
+          
+        case 4:
+          if (zz > sample3Length)
+          {
+            _phase = 0;
+            zz = 0;
+          }
+          sPtr = &sample3Table[zz];
+          break;
+
+        case 5:
+          if (zz > sample4Length)
+          {
+            _phase = 0;
+            zz = 0;
+          }
+          sPtr = &sample4Table[zz];
+          break;
+
+        case 6:
+          if (zz > sampleLength)
+          {
+            _phase = 0;
+            zz = 0;
+          }
+          sPtr = &sampleTable[zz];
+          break;
+
+        case 7:
+          if (zz > sample4Length)
+          {
+            _phase = 0;
+            zz = 0;
+          }
+          sPtr = &sample4Table[zz];
+          break;
       }
       _sample = (char)pgm_read_byte_near(sPtr) + 128;
       break;
@@ -459,27 +472,28 @@ void loop(void)
 {
   synthesis();
   renderDecay();
-  //trigDetect();
 }
 
-void trigDetect(void)
-{ //rather trigger machine
+void
+trigDetect(void)
+{
+  //rather trigger machine
   static uint8_t trigState = 0;
   uint8_t lastTrigState = 0;
 
   lastTrigState = trigState;
 
-  if (analogValues[0] < LOW_THRES)
+  if (analogValues[TRIG] < LOW_THRES)
   {
-    trigState = 0; //, incr=11,_incr=6, bitShift=2, osc2offset=270;
+    trigState = 0;
   }
-  else if (analogValues[0] > HIGH_THRES)
+  else if (analogValues[TRIG] > HIGH_THRES)
   {
-    trigState = 2; //, incr=24,_incr=6,bitShift=4,osc2offset=255;
+    trigState = 2;
   }
   else
   {
-    trigState = 1; //, incr=11,_incr=5,bitShift=4,osc2offset=255;
+    trigState = 1;
   }
 
   if (lastTrigState != trigState)
@@ -491,123 +505,113 @@ void trigDetect(void)
 
 uint8_t trigger(uint8_t intensity_1, uint8_t intensity_2)
 {
-  //lastTriggerTime=triggerTime;
-  //triggerTime=some increment shit
-  //decayTime=triggerTime-lastTrigerTime;
   uint8_t s = abs(intensity_1 - intensity_2);
-  if (s == 1)
-  {
-    decayVolume = 127;
-    decayVolume2 = 255;
-  }
-  else
-  {
-    decayVolume = 255;
-    decayVolume2 = 150;
-  }
+  decayVolume = (s == 1)  ? 127 : 255;
+  decayVolume2 = (s == 1) ? 255 : 150;
 }
 
+uint8_t analogChannelSequence[6] = {
+  TRIG, PITCH,
+  TRIG, DRUMSEL,
+  TRIG, DECAY
+};
 
-uint8_t analogChannelSequence[6] = {0, 1, 0, 2, 0, 3};
-uint8_t analogChannelReadIndex;
 
 void setDecay(uint8_t dec)
 {
   if (dec > 100)
   {
     decayTime = constrain(dec - 120, 1, 255);
-    pitchEnv = 0;
+    pitchEnv = false;
   }
   else
   {
     decayTime = (100 - dec);
-    pitchEnv = 255; //decayTime;
+    pitchEnv = true;
   }
 }
 
-ISR(ADC_vect) { // interupt triggered ad completion of ADC counter
+ISR(ADC_vect)
+{
+  // interupt triggered ad completion of ADC counter
+  static uint8_t analogChannelRead = 1;
+  static uint8_t skipRead = 0;
+  static uint8_t analogChannelReadIndex = 0;
+
   startupRead++;
-  if (!firstRead) { // discard first reading due to ADC multiplexer crosstalk
-    //update values and remember last values
-    lastAnalogValues[analogChannelRead] = analogValues[analogChannelRead];
-    analogValues[analogChannelRead] = getConversionResult();
-    //set ADC MULTIPLEXER to read the next channel
-    lastAnalogChannelRead = analogChannelRead;
-    if (!analogChannelRead)
-    {
-      trigDetect();
-    }
-    analogChannelReadIndex++;
-    if (analogChannelReadIndex > 5)
-    {
-      analogChannelReadIndex = 0;
-    }
+  // discard first reading due to ADC multiplexer crosstalk
+  if (!skipRead)
+  {
+    uint8_t thisAnalogChannelRead = analogChannelRead;
+    // update values and remember last values
+    lastAnalogValues[thisAnalogChannelRead] = analogValues[thisAnalogChannelRead];
+    analogValues[thisAnalogChannelRead] = getConversionResult();
+
+    // set ADC MULTIPLEXER to read the next channel
+    analogChannelReadIndex = analogChannelReadIndex == 5 ? 0 : analogChannelReadIndex + 1;
+
     analogChannelRead = analogChannelSequence[analogChannelReadIndex];
-    connectChannel(analogChannelRead);
+    connectChannel(0x0c); // read GND
+
     // set controll values if relevant (value changed)
-    if (lastAnalogChannelRead == PITCH)
+    switch(thisAnalogChannelRead)
     {
-      if (lastAnalogValues[PITCH] != analogValues[PITCH])
-      {
-        setFrequency(analogValues[PITCH] << 2);
-        decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255);
-//        uint8_t dyn = lastAnalogValues[PITCH] > analogValues[PITCH] ?
-//                          lastAnalogValues[PITCH] - analogValues[PITCH] :
-//                          analogValues[PITCH] - lastAnalogValues[PITCH];
-//        uint16_t sum = decayVolume2 + (dyn << 3);
-//        decayVolume2 = sum > 255 ? 255 : decayVolume2 + (dyn << 3);
-      }
+      case TRIG:
+        trigDetect();
+        break;
+
+      case PITCH:
+        if (lastAnalogValues[PITCH] != analogValues[PITCH])
+        {
+          setFrequency(analogValues[PITCH] << 2);
+          decayVolume2 = constrain(decayVolume2 + ((abs(lastAnalogValues[PITCH] - analogValues[PITCH]) << 3)), 0, 255);
+        }
+        break;
+
+      case DRUMSEL:
+        if (lastAnalogValues[DRUMSEL] != analogValues[DRUMSEL])
+        {
+          setFrequency2(analogValues[DRUMSEL] << 2);
+          decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[DRUMSEL] - analogValues[DRUMSEL]) << 2)), 0, 255);
+        }
+        break;
+        
+      case DECAY:
+        if (lastAnalogValues[DECAY] != analogValues[DECAY])
+        {
+          setDecay(analogValues[DECAY]);
+        }
+        break;
     }
-    else if (lastAnalogChannelRead == WS_1)
-    {
-      if (lastAnalogValues[WS_1] != analogValues[WS_1])
-      {
-        setFrequency2(analogValues[WS_1] << 2);
-        decayVolume = constrain(decayVolume + ((abs(lastAnalogValues[WS_1] - analogValues[WS_1]) << 2)), 0, 255);
-//        uint8_t dyn = lastAnalogValues[WS_1] > analogValues[WS_1] ?
-//                          lastAnalogValues[WS_1] - analogValues[WS_1] :
-//                          analogValues[WS_1] - lastAnalogValues[WS_1];
-//        uint16_t sum = decayVolume + (dyn << 2);
-//        decayVolume = sum > 255 ? 255 : decayVolume + (dyn << 2);
-      }
-    }
-    else if (lastAnalogChannelRead == WS_2)
-    {
-      if (lastAnalogValues[WS_2] != analogValues[WS_2])
-      {
-        setDecay(analogValues[WS_2]);
-      }
-    }
-    firstRead = true;
+    skipRead = 1;
   }
   else
   {
-    /*
-      at the first reading off the ADX (which will not used)
-      something else will happen the input pin will briefly turn to output to
-      discarge charge built up in passive mixing ciruit using zener diodes
-      because zeners have some higher unpredictable capacitance, various voltages might get stuck on the pin
-    */
-    if (analogValues[analogChannelRead] < 200)
+    /*  We've just given the internal S/H capacitor a chance
+     *  to discharge, so now read the control. We also flip the
+     *  port pin to an output... errrrmmm because it seems to make
+     *  things better?!
+     */
+      
+    if (analogChannelRead != TRIG)  // no diodes on the TRIG input
     {
-      bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 1);
+      bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 1);  // configure as output
+      bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 0);   // configure as input
     }
-    bitWrite(DDRB, analogToDigitalPinMapping[analogChannelRead], 0);
-    bitWrite(PORTB, analogToDigitalPinMapping[analogChannelRead], 0);
-
-    firstRead = false;
+    connectChannel(analogChannelRead);
+    skipRead=0;
   }
   //start the ADC - at completion the interupt will be called again
   startConversion();
 }
 
+void renderDecay(void)
+{
+  static uint16_t decayCounter = 0;
+  static uint16_t decayCounter2 = 0;
 
-volatile uint16_t decayCounter = 0;
-
-volatile uint16_t decayCounter2 = 0;
-
-void renderDecay() {
-  if (decayTime != 0) {
+  if (decayTime != 0)
+  {
     decayCounter += 6;
     if (decayCounter >= decayTime)
     {
@@ -631,37 +635,27 @@ void renderDecay() {
 }
 
 // #### FUNCTIONS TO ACCES ADC REGISTERS
-void init() {
-
-  ADMUX  = _BV(ADLAR);      // only need 8 bit output
-  bitWrite(ADCSRA, ADEN, 1); //adc enabled
-  bitWrite(ADCSRA, ADPS2, 1); // set prescaler
-  bitWrite(ADCSRA, ADPS1, 1); // set prescaler
-  bitWrite(ADCSRA, ADPS0, 1); // set prescaler
-  bitWrite(ADCSRA, ADIE, 1); //enable conversion finished interupt
-  bitWrite(SREG, 7, 1);
-  // prescaler = highest division
+void initADC(void)
+{
+  ADCSRA = _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0) |   // maximum prescaler
+           _BV(ADIE) |  // interrupt when conversion complete
+           _BV(ADEN);   // enable the ADC
 }
-
 
 // channel 8 can be used to measure the temperature of the chip
-void connectChannel(uint8_t number) {
-  ADMUX &= (11110000);
-  ADMUX |= number;
+void connectChannel(uint8_t number)
+{
+  ADMUX = _BV(ADLAR) |    // we only want 8 bit output
+          (number & 0x0f);
 }
 
-void startConversion() {
-  bitWrite(ADCSRA, ADSC, 1); //start conversion
+void startConversion(void)
+{
+  ADCSRA |= _BV(ADSC); //start conversion
 }
 
-bool isConversionFinished() {
-  return (ADCSRA & (1 << ADIF));
-}
-
-bool isConversionRunning() {
-  return !(ADCSRA & (1 << ADIF));
-}
-
-uint8_t getConversionResult() {
+uint8_t getConversionResult(void)
+{
+  // We only use 8 bits, hence ADLAR above and only need to read ADCH
   return ADCH;
 }

@@ -42,7 +42,7 @@ const char __attribute__((section(".progmem.data"))) TR_HH_DATA [] = {0, 4, -1,
 -2, -1, 0, 0, 2, 1, 1, -1, 2, -1, 0, -1, 1, -2, 0, -1, -3, 1, -2, 0, -2, -1, 0,
 0, -1, -1, 0, 0, -1, -1, 0, 0, 0, 0, };
 const char* sampleTable = TR_HH_DATA;
-const uint16_t sampleLength = TR_HH_NUM_CELLS;
+const uint16_t sampleLength = sizeof(TR_HH_DATA);
 
 
 
@@ -104,7 +104,7 @@ const char __attribute__((section(".progmem.data"))) KICK2_DATA [] = {0, -2, 13,
 4, 3, 3, 3, 3, 3, 3, 4, 3, 2, 2, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, -1, -1, -1,
 -1, -1, -1, };
 const char* sample2Table = KICK2_DATA;
-const uint16_t sample2Length = KICK2_NUM_CELLS;
+const uint16_t sample2Length = sizeof(KICK2_DATA);
 
 
  
@@ -214,7 +214,7 @@ const char __attribute__((section(".progmem.data"))) SNARE2_DATA [] = {-1, 1,
 0, 0, 0, 0, 0, };
 
 const char* sample3Table = SNARE2_DATA;
-const uint16_t sample3Length = SNARE2_NUM_CELLS;
+const uint16_t sample3Length = sizeof(SNARE2_DATA);
 
 
 #define TR_CLAP_NUM_CELLS 967
@@ -269,6 +269,6 @@ const char __attribute__((section(".progmem.data"))) TR_CLAP_DATA [] = {-36,
 0, 0, 0, -1, -3, -2, 0, 0, 1, 0, 0, -1, -2, -3, -2, -1, 1, 0, 0, 0, -1, -1, -1,
 0, -1, -1, -1, 0, 0, 0, -1, -1, -1, -1, -1, -1, 0, 0, 0, };
 const char* sample4Table = TR_CLAP_DATA;
-const uint16_t sample4Length = TR_CLAP_NUM_CELLS;
+const uint16_t sample4Length = sizeof(TR_CLAP_DATA);
 
 #endif /* 909_HH_H_ */
